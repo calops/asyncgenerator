@@ -1,0 +1,6 @@
+[package]
+name = "asyncgenerator"
+version = "0.1.0"
+authors = ["Rémi Labeyrie <rlabeyrie@gmail.com>"]
+
+[dependencies]
