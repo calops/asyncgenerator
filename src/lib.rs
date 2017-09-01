@@ -19,7 +19,7 @@ where T: Generator
             generator: generator
         }
     }
-    
+
     #[async]
     fn resume(&mut self) -> GeneratorState<T::Yield, T::Return> {
         unimplemented!()
