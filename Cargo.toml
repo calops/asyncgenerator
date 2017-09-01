@@ -4,4 +4,7 @@ name = "asyncgenerator"
 version = "0.1.0"
 
 [dependencies]
-futures-await = { git = 'https://github.com/alexcrichton/futures-await' }
+crossbeam = "0.3.0"
+
+[dependencies.futures-await]
+git = "https://github.com/alexcrichton/futures-await"
