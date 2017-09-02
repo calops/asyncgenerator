@@ -30,13 +30,12 @@ where T: Generator
         async_gen
     }
 
-    #[async]
-    fn resume(&mut self) -> Result<Option<T::Yield>, ()> {
+    fn resume(&mut self) -> Option<T::Yield> {
         loop {
             match self.consumer.steal() {
                 chase_lev::Steal::Data(data) => match data {
-                    GeneratorState::Yielded(value) => return Ok(Some(value)),
-                    GeneratorState::Complete(_) => return Ok(None)
+                    GeneratorState::Yielded(value) => return Some(value),
+                    GeneratorState::Complete(_) => return None
                 }
             }
         }
@@ -75,14 +74,7 @@ where T: Generator
     type Item = T::Yield;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let future = async_block! {
-            await!(self.resume())
-        };
-        match future.wait() {
-            Ok(Some(next_value)) => Some(next_value),
-            Ok(None) => None,
-            Err(_) => None
-        }
+        return self.resume();
     }
 }
 
