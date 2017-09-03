@@ -11,23 +11,16 @@ use crossbeam::sync::chase_lev;
 struct AsyncGenerator<T>
 where T: Generator
 {
-    generator: T,
-    producer: chase_lev::Worker<GeneratorState<T::Yield, T::Return>>,
     consumer: chase_lev::Stealer<GeneratorState<T::Yield, T::Return>>
 }
 
 impl<T> AsyncGenerator<T>
-where T: Generator
+where T: Generator + 'static
 {
     fn new(generator: T) -> Self {
-        let (mut producer, consumer) = chase_lev::deque();
-        let mut async_gen = AsyncGenerator {
-            generator: generator,
-            producer: producer,
-            consumer: consumer
-        };
-        async_gen.populate();
-        async_gen
+        let (producer, consumer) = chase_lev::deque();
+        populate(generator, producer);
+        AsyncGenerator { consumer: consumer }
     }
 
     fn resume(&mut self) -> Option<T::Yield> {
@@ -36,22 +29,28 @@ where T: Generator
                 chase_lev::Steal::Data(data) => match data {
                     GeneratorState::Yielded(value) => return Some(value),
                     GeneratorState::Complete(_) => return None
-                }
+                },
+                chase_lev::Steal::Empty => continue,
+                chase_lev::Steal::Abort => return None
             }
         }
     }
+}
 
-    #[async]
-    fn populate(&mut self) -> Result<(), ()> {
-        loop {
-            let next_item = self.generator.resume();
-            self.producer.push(next_item);
-            match next_item {
-                GeneratorState::Complete(_) => break
-            }
+#[async]
+fn populate<T>(mut generator: T, producer: chase_lev::Worker<GeneratorState<T::Yield, T::Return>>) -> Result<(), ()>
+where T: Generator + 'static
+{
+    let mut abort = false;
+    while !abort {
+        let next_item = generator.resume();
+        match next_item {
+            GeneratorState::Complete(_) => abort = true,
+            GeneratorState::Yielded(_) => abort = false
         }
-        Ok(())
+        producer.push(next_item);
     }
+    Ok(())
 }
 
 trait IntoAsync<T>
@@ -61,7 +60,7 @@ where T: Generator
 }
 
 impl<T> IntoAsync<T> for T
-where T: Generator
+where T: Generator + 'static
 {
     fn into_async(self) -> AsyncGenerator<T> {
         AsyncGenerator::new(self)
@@ -69,7 +68,7 @@ where T: Generator
 }
 
 impl<T> Iterator for AsyncGenerator<T>
-where T: Generator
+where T: Generator + 'static
 {
     type Item = T::Yield;
 
