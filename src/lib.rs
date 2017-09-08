@@ -12,7 +12,7 @@ struct AsyncGenerator<T>
 where
     T: Generator,
 {
-    consumer: chase_lev::Stealer<GeneratorState<T::Yield, T::Return>>,
+    stealer: chase_lev::Stealer<GeneratorState<T::Yield, T::Return>>,
 }
 
 impl<T> AsyncGenerator<T>
@@ -20,14 +20,14 @@ where
     T: Generator + 'static,
 {
     fn new(generator: T) -> Self {
-        let (producer, consumer) = chase_lev::deque();
-        populate(generator, producer);
-        AsyncGenerator { consumer: consumer }
+        let (worker, stealer) = chase_lev::deque();
+        populate(generator, worker);
+        AsyncGenerator { stealer: stealer }
     }
 
     fn resume(&mut self) -> Option<T::Yield> {
         loop {
-            match self.consumer.steal() {
+            match self.stealer.steal() {
                 chase_lev::Steal::Data(data) => match data {
                     GeneratorState::Yielded(value) => return Some(value),
                     GeneratorState::Complete(_) => return None,
@@ -42,16 +42,16 @@ where
 #[async]
 fn populate<T>(
     mut generator: T,
-    producer: chase_lev::Worker<GeneratorState<T::Yield, T::Return>>,
+    worker: chase_lev::Worker<GeneratorState<T::Yield, T::Return>>,
 ) -> Result<(), ()>
 where
     T: Generator + 'static,
 {
     loop {
         match generator.resume() {
-            next_item @ GeneratorState::Yielded(_) => producer.push(next_item),
+            next_item @ GeneratorState::Yielded(_) => worker.push(next_item),
             next_item => {
-                producer.push(next_item);
+                worker.push(next_item);
                 return Ok(());
             }
         }
