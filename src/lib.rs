@@ -1,7 +1,7 @@
 #![feature(generators, generator_trait, conservative_impl_trait, proc_macro)]
 
-extern crate futures_await as futures;
 extern crate crossbeam;
+extern crate futures_await as futures;
 
 use std::ops::Generator;
 use std::ops::GeneratorState;
@@ -9,13 +9,15 @@ use futures::prelude::*;
 use crossbeam::sync::chase_lev;
 
 struct AsyncGenerator<T>
-where T: Generator
+where
+    T: Generator,
 {
-    consumer: chase_lev::Stealer<GeneratorState<T::Yield, T::Return>>
+    consumer: chase_lev::Stealer<GeneratorState<T::Yield, T::Return>>,
 }
 
 impl<T> AsyncGenerator<T>
-where T: Generator + 'static
+where
+    T: Generator + 'static,
 {
     fn new(generator: T) -> Self {
         let (producer, consumer) = chase_lev::deque();
@@ -28,39 +30,44 @@ where T: Generator + 'static
             match self.consumer.steal() {
                 chase_lev::Steal::Data(data) => match data {
                     GeneratorState::Yielded(value) => return Some(value),
-                    GeneratorState::Complete(_) => return None
+                    GeneratorState::Complete(_) => return None,
                 },
                 chase_lev::Steal::Empty => continue,
-                chase_lev::Steal::Abort => return None
+                chase_lev::Steal::Abort => return None,
             }
         }
     }
 }
 
 #[async]
-fn populate<T>(mut generator: T, producer: chase_lev::Worker<GeneratorState<T::Yield, T::Return>>) -> Result<(), ()>
-where T: Generator + 'static
+fn populate<T>(
+    mut generator: T,
+    producer: chase_lev::Worker<GeneratorState<T::Yield, T::Return>>,
+) -> Result<(), ()>
+where
+    T: Generator + 'static,
 {
-    let mut abort = false;
-    while !abort {
-        let next_item = generator.resume();
-        match next_item {
-            GeneratorState::Complete(_) => abort = true,
-            GeneratorState::Yielded(_) => abort = false
+    loop {
+        match generator.resume() {
+            next_item @ GeneratorState::Yielded(_) => producer.push(next_item),
+            next_item => {
+                producer.push(next_item);
+                return Ok(());
+            }
         }
-        producer.push(next_item);
     }
-    Ok(())
 }
 
 trait IntoAsync<T>
-where T: Generator
+where
+    T: Generator,
 {
     fn into_async(self) -> AsyncGenerator<T>;
 }
 
 impl<T> IntoAsync<T> for T
-where T: Generator + 'static
+where
+    T: Generator + 'static,
 {
     fn into_async(self) -> AsyncGenerator<T> {
         AsyncGenerator::new(self)
@@ -68,7 +75,8 @@ where T: Generator + 'static
 }
 
 impl<T> Iterator for AsyncGenerator<T>
-where T: Generator + 'static
+where
+    T: Generator + 'static,
 {
     type Item = T::Yield;
 
@@ -82,7 +90,7 @@ mod tests {
     use std::ops::Generator;
     use IntoAsync;
 
-    fn dummy_generator() -> impl Generator<Yield=u32, Return=()> {
+    fn dummy_generator() -> impl Generator<Yield = u32, Return = ()> {
         || {
             yield 1;
             yield 2;
@@ -93,7 +101,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let test : Vec<_> = dummy_generator().into_async().collect();
+        let test: Vec<_> = dummy_generator().into_async().collect();
 
         assert_eq!(vec![1u32, 2, 3], test);
     }
